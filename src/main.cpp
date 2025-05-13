@@ -1,75 +1,108 @@
-#include <cstdlib>
-#include <exception>
-#include <format>
-#include <fstream>
+#include "cmd_options.h"
+#include "crypto_guard_ctx.h"
+#include <array>
 #include <iostream>
+#include <openssl/evp.h>
+#include <print>
 #include <stdexcept>
+#include <string>
 
-#include <cmd_options.h>
-#include <crypto_guard_ctx.h>
+struct AesCipherParams {
+    static const size_t KEY_SIZE = 32;             // AES-256 key size
+    static const size_t IV_SIZE = 16;              // AES block size (IV length)
+    const EVP_CIPHER *cipher = EVP_aes_256_cbc();  // Cipher algorithm
 
-using namespace CryptoGuard;
+    int encrypt;                              // 1 for encryption, 0 for decryption
+    std::array<unsigned char, KEY_SIZE> key;  // Encryption key
+    std::array<unsigned char, IV_SIZE> iv;    // Initialization vector
+};
 
-void process(const ProgramOptions &opts) {
-    auto cannotOpenMessage = [](const std::string &path) { return std::format("cannot open file '{}'", path); };
-    auto passwordWarning = [](const ProgramOptions &opts) {
-        if (opts.GetPassword().empty())
-            std::cout << "Warning: password is empty\n";
-    };
+AesCipherParams CreateChiperParamsFromPassword(std::string_view password) {
+    AesCipherParams params;
+    constexpr std::array<unsigned char, 8> salt = {'1', '2', '3', '4', '5', '6', '7', '8'};
 
-    CryptoGuardCtx guard;
+    int result = EVP_BytesToKey(params.cipher, EVP_sha256(), salt.data(),
+                                reinterpret_cast<const unsigned char *>(password.data()), password.size(), 1,
+                                params.key.data(), params.iv.data());
 
-    switch (opts.GetCommand()) {
-    case ProgramOptions::COMMAND_TYPE::NONE:
-        break;
-    case ProgramOptions::COMMAND_TYPE::ENCRYPT: {
-        passwordWarning(opts);
-        std::ifstream fileIn(opts.GetInputFile());
-        if (!fileIn.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetInputFile()));
-        std::ofstream fileOut(opts.GetOutputFile());
-        if (!fileOut.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetOutputFile()));
-        guard.EncryptFile(fileIn, fileOut, opts.GetPassword());
-        break;
+    if (result == 0) {
+        throw std::runtime_error{"Failed to create a key from password"};
     }
-    case ProgramOptions::COMMAND_TYPE::DECRYPT: {
-        passwordWarning(opts);
-        std::ifstream fileIn(opts.GetInputFile());
-        if (!fileIn.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetInputFile()));
-        std::ofstream fileOut(opts.GetOutputFile());
-        if (!fileOut.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetOutputFile()));
-        guard.DecryptFile(fileIn, fileOut, opts.GetPassword());
-        break;
-    }
-    case ProgramOptions::COMMAND_TYPE::CHECKSUM: {
-        std::ifstream fileIn(opts.GetInputFile());
-        if (!fileIn.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetInputFile()));
-        std::cout << std::format("Checksum: {}\n", guard.CalculateChecksum(fileIn));
-        break;
-    }
-    default:
-        throw std::runtime_error("unexpected option");
-    }
+
+    return params;
 }
 
 int main(int argc, char *argv[]) {
     try {
-        ProgramOptions opts;
-        if (!opts.Parse(argc, argv))
-            return EXIT_FAILURE;
-        process(opts);
-    } catch (const std::runtime_error &exc) {
-        std::cerr << std::format("Runtime error: {}\n", exc.what());
-        return EXIT_FAILURE;
-    } catch (const std::exception &exc) {
-        std::cerr << std::format("Unexpected error: {}\n", exc.what());
-        return EXIT_FAILURE;
-    } catch (...) {
-        std::cerr << "Unknown error\n";
+        //
+        // OpenSSL пример использования:
+        //
+        std::string input = "01234567890123456789";
+        std::string output;
+
+        OpenSSL_add_all_algorithms();
+
+        auto params = CreateChiperParamsFromPassword("12341234");
+        params.encrypt = 1;
+        auto *ctx = EVP_CIPHER_CTX_new();
+
+        // Инициализируем cipher
+        EVP_CipherInit_ex(ctx, params.cipher, nullptr, params.key.data(), params.iv.data(), params.encrypt);
+
+        std::vector<unsigned char> outBuf(16 + EVP_MAX_BLOCK_LENGTH);
+        std::vector<unsigned char> inBuf(16);
+        int outLen;
+
+        // Обрабатываем первые N символов
+        EVP_CipherUpdate(ctx, outBuf.data(), &outLen, inBuf.data(), static_cast<int>(16));
+        for (int i = 0; i < outLen; ++i) {
+            output.push_back(outBuf[i]);
+        }
+
+        // Обрабатываем оставшиеся символы
+        EVP_CipherUpdate(ctx, outBuf.data(), &outLen, inBuf.data(), static_cast<int>(16));
+        for (int i = 0; i < outLen; ++i) {
+            output.push_back(outBuf[i]);
+        }
+
+        // Заканчиваем работу с cipher
+        EVP_CipherFinal_ex(ctx, outBuf.data(), &outLen);
+        for (int i = 0; i < outLen; ++i) {
+            output.push_back(outBuf[i]);
+        }
+        EVP_CIPHER_CTX_free(ctx);
+        std::print("String encoded successfully. Result: '{}'\n\n", output);
+        EVP_cleanup();
+        //
+        // Конец примера
+        //
+
+        CryptoGuard::ProgramOptions options;
+
+        CryptoGuard::CryptoGuardCtx cryptoCtx;
+
+        using COMMAND_TYPE = CryptoGuard::ProgramOptions::COMMAND_TYPE;
+        switch (options.GetCommand()) {
+        case COMMAND_TYPE::ENCRYPT:
+            std::print("File encoded successfully\n");
+            break;
+
+        case COMMAND_TYPE::DECRYPT:
+            std::print("File decoded successfully\n");
+            break;
+
+        case COMMAND_TYPE::CHECKSUM:
+            std::print("Checksum: {}\n", "CHECKSUM_NOT_IMPLEMENTED");
+            break;
+
+        default:
+            throw std::runtime_error{"Unsupported command"};
+        }
+
+    } catch (const std::exception &e) {
+        std::print(std::cerr, "Error: {}\n", e.what());
+        return 1;
     }
-    return EXIT_SUCCESS;
+
+    return 0;
 }

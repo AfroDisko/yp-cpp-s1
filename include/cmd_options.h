@@ -2,32 +2,35 @@
 
 #include <boost/program_options.hpp>
 #include <string>
+#include <unordered_map>
 
 namespace CryptoGuard {
 
 class ProgramOptions {
 public:
-    enum class COMMAND_TYPE { NONE = -1, ENCRYPT, DECRYPT, CHECKSUM, COUNT };
-
     ProgramOptions();
-    ~ProgramOptions() = default;
+    ~ProgramOptions();
+
+    enum class COMMAND_TYPE {
+        ENCRYPT,
+        DECRYPT,
+        CHECKSUM,
+    };
 
     bool Parse(int argc, char *argv[]);
 
     COMMAND_TYPE GetCommand() const { return command_; }
-    const std::string &GetInputFile() const { return inputFile_; }
-    const std::string &GetOutputFile() const { return outputFile_; }
-    const std::string &GetPassword() const { return password_; }
+    std::string GetInputFile() const { return inputFile_; }
+    std::string GetOutputFile() const { return outputFile_; }
+    std::string GetPassword() const { return password_; }
 
 private:
-    void SetupOptions();
-
-    void NotifierCommand(std::string);
-    void NotifierInputFile(std::string);
-    void NotifierOutputFile(std::string);
-    void NotifierPassword(std::string);
-
-    COMMAND_TYPE command_ = COMMAND_TYPE::NONE;
+    COMMAND_TYPE command_;
+    const std::unordered_map<std::string_view, COMMAND_TYPE> commandMapping_ = {
+        {"encrypt", ProgramOptions::COMMAND_TYPE::ENCRYPT},
+        {"decrypt", ProgramOptions::COMMAND_TYPE::DECRYPT},
+        {"checksum", ProgramOptions::COMMAND_TYPE::CHECKSUM},
+    };
 
     std::string inputFile_;
     std::string outputFile_;
