@@ -15,15 +15,19 @@ using namespace CryptoGuard;
 
 namespace po = boost::program_options;
 
-constexpr std::string_view kOptStrHelp = "help";
-constexpr std::string_view kOptStrInput = "input";
-constexpr std::string_view kOptStrOutput = "output";
-constexpr std::string_view kOptStrPassword = "password";
+namespace {
 
-constexpr std::string_view kOptStrCommand = "command";
-constexpr std::string_view kOptStrCommandEncrypt = "encrypt";
-constexpr std::string_view kOptStrCommandDecrypt = "decrypt";
-constexpr std::string_view kOptStrCommandChecksum = "checksum";
+const char *kOptStrHelp = "help";
+const char *kOptStrInput = "input";
+const char *kOptStrOutput = "output";
+const char *kOptStrPassword = "password";
+
+const char *kOptStrCommand = "command";
+const char *kOptStrCommandEncrypt = "encrypt";
+const char *kOptStrCommandDecrypt = "decrypt";
+const char *kOptStrCommandChecksum = "checksum";
+
+}  // namespace
 
 ProgramOptions::ProgramOptions() : desc_("Allowed options") { SetupOptions(); }
 
@@ -32,34 +36,26 @@ bool ProgramOptions::Parse(int argc, char *argv[]) {
     try {
         po::store(po::parse_command_line(argc, argv, desc_), variablesMap);
         po::notify(variablesMap);
-    } catch (const boost::exception &exc) {
-        throw std::runtime_error(boost::diagnostic_information(exc));
+    } catch (const std::exception &exc) {
+        throw std::runtime_error(exc.what());
     }
-    if (variablesMap.contains(kOptStrHelp.data())) {
+    if (variablesMap.contains(kOptStrHelp)) {
         std::cout << desc_;
     }
     return true;
 }
 
 void ProgramOptions::SetupOptions() {
-    desc_.add_options()(kOptStrHelp.data(), "prints this help message")(
-        kOptStrInput.data(),
-        po::value<std::string>()->default_value("./input.txt")->composing()->notifier([this](std::string inputFile) {
-            NotifierInputFile(std::move(inputFile));
-        }),
-        "input file path")(
-        kOptStrOutput.data(),
-        po::value<std::string>()->default_value("./output.txt")->composing()->notifier([this](std::string outputFile) {
-            NotifierOutputFile(std::move(outputFile));
-        }),
-        "output file path")(kOptStrCommand.data(),
-                            po::value<std::string>()->composing()->notifier(
-                                [this](std::string command) { NotifierCommand(std::move(command)); }),
-                            "specifies command to execute")(
-        kOptStrPassword.data(), po::value<std::string>()->composing()->notifier([this](std::string password) {
-            NotifierPassword(std::move(password));
-        }),
-        "sets encryption password");
+    auto wrapperCommand = [this](std::string command) { NotifierCommand(std::move(command)); };
+
+    // clang-format off
+    desc_.add_options()
+    (kOptStrHelp, "prints this help message")
+    (kOptStrInput, po::value<std::string>(&inputFile_), "input file path")
+    (kOptStrOutput, po::value<std::string>(&outputFile_)->default_value("output.txt"), "output file path")
+    (kOptStrCommand, po::value<std::string>()->notifier(wrapperCommand), "specifies command to execute")
+    (kOptStrPassword, po::value<std::string>(&password_), "sets encryption password");
+    // clang-format on
 }
 
 void ProgramOptions::NotifierCommand(std::string command) {
@@ -74,25 +70,4 @@ void ProgramOptions::NotifierCommand(std::string command) {
         throw std::runtime_error(std::format("unrecognized command '{}'", command));
     }
     command_ = it->second;
-}
-
-void ProgramOptions::NotifierInputFile(std::string inputFile) {
-    if (inputFile.empty()) {
-        throw std::runtime_error("input file path is empty");
-    }
-    inputFile_ = std::move(inputFile);
-}
-
-void ProgramOptions::NotifierOutputFile(std::string outputFile) {
-    if (outputFile.empty()) {
-        throw std::runtime_error("output file path is empty");
-    }
-    outputFile_ = std::move(outputFile);
-}
-
-void ProgramOptions::NotifierPassword(std::string password) {
-    if (password.empty()) {
-        throw std::runtime_error("password is empty");
-    }
-    password_ = std::move(password);
 }

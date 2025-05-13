@@ -40,6 +40,12 @@ public:
     Impl();
     ~Impl();
 
+    Impl(const Impl &) = delete;
+    Impl &operator=(const Impl &) = delete;
+
+    Impl(Impl &&) = default;
+    Impl &operator=(Impl &&) = default;
+
     void Encrypt(std::istream &, std::ostream &, std::string_view);
     void Decrypt(std::istream &, std::ostream &, std::string_view);
     std::string CalculateChecksum(std::istream &);
@@ -55,6 +61,7 @@ private:
                 EVP_CIPHER_CTX_free(ctx);
         }
     };
+
     struct MdCtxDeleter {
         void operator()(EVP_MD_CTX *ctx) const {
             if (!!ctx)
@@ -64,6 +71,25 @@ private:
 
     std::unique_ptr<EVP_CIPHER_CTX, CipherCtxDeleter> ctxCipher_;
     std::unique_ptr<EVP_MD_CTX, MdCtxDeleter> ctxMd_;
+};
+
+struct CipherCtxGuard {
+    CipherCtxGuard(EVP_CIPHER_CTX *ctx) : ctx_(ctx) {}
+    ~CipherCtxGuard() {
+        if (!!ctx_)
+            EVP_CIPHER_CTX_cleanup(ctx_);
+    }
+
+    CipherCtxGuard(const CipherCtxGuard &) = delete;
+    CipherCtxGuard &operator=(const CipherCtxGuard &) = delete;
+
+    CipherCtxGuard(CipherCtxGuard &&) = delete;
+    CipherCtxGuard &operator=(CipherCtxGuard &&) = delete;
+
+    void disarm() { ctx_ = nullptr; }
+
+private:
+    EVP_CIPHER_CTX *ctx_ = nullptr;
 };
 
 CryptoGuardCtx::Impl::Impl() {
@@ -98,9 +124,13 @@ void CryptoGuardCtx::Impl::Decrypt(std::istream &in, std::ostream &out, std::str
 
 void CryptoGuardCtx::Impl::Process(std::istream &in, std::ostream &out, AesCipherParams &params) {
     static constexpr std::size_t blockSize = 1024;
+    auto checkStreams = [&in, &out]() {
+        if (in.bad() || out.bad())
+            throw std::runtime_error("bad stream(s) on cipher processing");
+    };
 
-    if (!in || !out)
-        throw std::runtime_error("bad stream passed");
+    checkStreams();
+    CipherCtxGuard ctxGuard(ctxCipher_.get());
 
     std::array<unsigned char, blockSize> bufferIn = {};
     auto *bufferInPtr = reinterpret_cast<char *>(bufferIn.data());
@@ -126,20 +156,26 @@ void CryptoGuardCtx::Impl::Process(std::istream &in, std::ostream &out, AesCiphe
         out.write(bufferOutPtr, bufferOutLen);
         // std::clog << std::format("wrote {} bytes\n", bufferOutLen);
     }
+    checkStreams();
 
     retval = EVP_CipherFinal_ex(ctxCipher_.get(), bufferOut.data(), &bufferOutLen);
     if (retval == 0)
         throw std::runtime_error(std::format("cannot finalize cipher: {}", GetLatestError()));
     out.write(bufferOutPtr, bufferOutLen);
+    checkStreams();
 
+    ctxGuard.disarm();
     EVP_CIPHER_CTX_cleanup(ctxCipher_.get());
 }
 
 std::string CryptoGuardCtx::Impl::CalculateChecksum(std::istream &in) {
     static constexpr std::size_t blockSize = 1024;
+    auto checkStream = [&in]() {
+        if (in.bad())
+            throw std::runtime_error("bad stream on checksum calculation");
+    };
 
-    if (!in)
-        throw std::runtime_error("bad stream passed");
+    checkStream();
 
     std::array<unsigned char, blockSize> buffer = {};
     auto *bufferPtr = reinterpret_cast<char *>(buffer.data());
@@ -161,6 +197,7 @@ std::string CryptoGuardCtx::Impl::CalculateChecksum(std::istream &in) {
         if (retval == 0)
             throw std::runtime_error(std::format("cannot update md: {}", GetLatestError()));
     }
+    checkStream();
 
     retval = EVP_DigestFinal_ex(ctxMd_.get(), md.data(), &mdLen);
     if (retval == 0)
@@ -203,13 +240,11 @@ CryptoGuardCtx::CryptoGuardCtx() : pImpl_(std::make_unique<Impl>()) {}
 CryptoGuardCtx::~CryptoGuardCtx() = default;
 
 void CryptoGuardCtx::EncryptFile(std::istream &in, std::ostream &out, std::string_view password) {
-    pImpl_ ? pImpl_->Encrypt(in, out, password) : throw std::runtime_error("nullptr pimpl");
+    pImpl_->Encrypt(in, out, password);
 }
 
 void CryptoGuardCtx::DecryptFile(std::istream &in, std::ostream &out, std::string_view password) {
-    pImpl_ ? pImpl_->Decrypt(in, out, password) : throw std::runtime_error("nullptr pimpl");
+    pImpl_->Decrypt(in, out, password);
 }
 
-std::string CryptoGuardCtx::CalculateChecksum(std::istream &in) {
-    return pImpl_ ? pImpl_->CalculateChecksum(in) : throw std::runtime_error("nullptr pimpl");
-}
+std::string CryptoGuardCtx::CalculateChecksum(std::istream &in) { return pImpl_->CalculateChecksum(in); }

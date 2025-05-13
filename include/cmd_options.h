@@ -7,10 +7,9 @@ namespace CryptoGuard {
 
 class ProgramOptions {
 public:
-    enum class COMMAND_TYPE { NONE = -1, ENCRYPT, DECRYPT, CHECKSUM, COUNT };
+    enum class COMMAND_TYPE { ENCRYPT, DECRYPT, CHECKSUM };
 
     ProgramOptions();
-    ~ProgramOptions() = default;
 
     bool Parse(int argc, char *argv[]);
 
@@ -23,11 +22,8 @@ private:
     void SetupOptions();
 
     void NotifierCommand(std::string);
-    void NotifierInputFile(std::string);
-    void NotifierOutputFile(std::string);
-    void NotifierPassword(std::string);
 
-    COMMAND_TYPE command_ = COMMAND_TYPE::NONE;
+    COMMAND_TYPE command_{-1};
 
     std::string inputFile_;
     std::string outputFile_;

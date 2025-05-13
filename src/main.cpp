@@ -2,6 +2,7 @@
 #include <exception>
 #include <format>
 #include <fstream>
+#include <ios>
 #include <iostream>
 #include <stdexcept>
 
@@ -16,43 +17,37 @@ void process(const ProgramOptions &opts) {
         if (opts.GetPassword().empty())
             std::cout << "Warning: password is empty\n";
     };
+    auto openFileStream = [](const std::string &path, std::ios::openmode mode) {
+        std::fstream file(path, mode);
+        if (!file.is_open())
+            throw std::runtime_error(std::format("cannot open file '{}'", path));
+        return file;
+    };
 
     CryptoGuardCtx guard;
 
     switch (opts.GetCommand()) {
-    case ProgramOptions::COMMAND_TYPE::NONE:
-        break;
     case ProgramOptions::COMMAND_TYPE::ENCRYPT: {
         passwordWarning(opts);
-        std::ifstream fileIn(opts.GetInputFile());
-        if (!fileIn.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetInputFile()));
-        std::ofstream fileOut(opts.GetOutputFile());
-        if (!fileOut.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetOutputFile()));
+        std::fstream fileIn = openFileStream(opts.GetInputFile(), std::ios::in);
+        std::fstream fileOut = openFileStream(opts.GetOutputFile(), std::ios::out);
         guard.EncryptFile(fileIn, fileOut, opts.GetPassword());
         break;
     }
     case ProgramOptions::COMMAND_TYPE::DECRYPT: {
         passwordWarning(opts);
-        std::ifstream fileIn(opts.GetInputFile());
-        if (!fileIn.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetInputFile()));
-        std::ofstream fileOut(opts.GetOutputFile());
-        if (!fileOut.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetOutputFile()));
+        std::fstream fileIn = openFileStream(opts.GetInputFile(), std::ios::in);
+        std::fstream fileOut = openFileStream(opts.GetOutputFile(), std::ios::out);
         guard.DecryptFile(fileIn, fileOut, opts.GetPassword());
         break;
     }
     case ProgramOptions::COMMAND_TYPE::CHECKSUM: {
-        std::ifstream fileIn(opts.GetInputFile());
-        if (!fileIn.is_open())
-            throw std::runtime_error(cannotOpenMessage(opts.GetInputFile()));
-        std::cout << std::format("Checksum: {}\n", guard.CalculateChecksum(fileIn));
+        std::fstream fileIn = openFileStream(opts.GetInputFile(), std::ios::in);
+        std::print(std::cout, "Checksum: {}\n", guard.CalculateChecksum(fileIn));
         break;
     }
     default:
-        throw std::runtime_error("unexpected option");
+        break;
     }
 }
 
@@ -63,13 +58,13 @@ int main(int argc, char *argv[]) {
             return EXIT_FAILURE;
         process(opts);
     } catch (const std::runtime_error &exc) {
-        std::cerr << std::format("Runtime error: {}\n", exc.what());
+        std::print(std::cerr, "Runtime error: {}\n", exc.what());
         return EXIT_FAILURE;
     } catch (const std::exception &exc) {
-        std::cerr << std::format("Unexpected error: {}\n", exc.what());
+        std::print(std::cerr, "Unexpected error: {}\n", exc.what());
         return EXIT_FAILURE;
     } catch (...) {
-        std::cerr << "Unknown error\n";
+        std::print(std::cerr, "Unknown error\n");
     }
     return EXIT_SUCCESS;
 }

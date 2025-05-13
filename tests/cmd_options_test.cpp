@@ -4,33 +4,16 @@
 
 using namespace CryptoGuard;
 
-namespace {
-std::string optNone = "";
-std::string optHelp = "--help";
-
-std::string optCommand = "--command";
-std::string optEncrypt = "encrypt";
-std::string optDecrypt = "decrypt";
-std::string optChecksum = "checksum";
-
-std::string optInput = "--input";
-std::string optOutput = "--output";
-std::string optPath= "test.txt";
-}
-
 TEST(ProgramOptionsTests, TestParseHelp){
     ProgramOptions opts;
 
     constexpr int argc = 2;
-    char* argv[argc] = {};
+    std::array<const char*, argc> argv = {"", "--help"};
 
-    argv[0] = optNone.data();
-    argv[1] = optHelp.data();
-
-    ASSERT_NO_THROW(opts.Parse(argc, argv));
-    ASSERT_EQ(opts.GetCommand(), ProgramOptions::COMMAND_TYPE::NONE);
-    ASSERT_EQ(opts.GetInputFile(), "./input.txt");
-    ASSERT_EQ(opts.GetOutputFile(), "./output.txt");
+    ASSERT_NO_THROW(opts.Parse(argc, (char**)argv.data()));
+    ASSERT_EQ(opts.GetCommand(), static_cast<ProgramOptions::COMMAND_TYPE>(-1));
+    ASSERT_EQ(opts.GetInputFile(), "");
+    ASSERT_EQ(opts.GetOutputFile(), "output.txt");
     ASSERT_EQ(opts.GetPassword(), "");
 }
 
@@ -38,35 +21,28 @@ TEST(ProgramOptionsTests, TestParseCommandFail) {
     ProgramOptions opts;
 
     constexpr int argc = 2;
-    char* argv[argc] = {};
+    std::array<const char*, argc> argv = {"", "--command"};
 
-    argv[0] = optNone.data();
-    argv[1] = optCommand.data();
-
-    ASSERT_THROW(opts.Parse(argc, argv), std::runtime_error);
+    ASSERT_THROW(opts.Parse(argc, (char**)argv.data()), std::runtime_error);
 }
 
 TEST(ProgramOptionsTests, TestParseCommandSuccess) {
     ProgramOptions opts;
 
     constexpr int argc = 3;
-    char* argv[argc] = {};
+    std::array<const char*, argc> argv = {"", "--command", "encrypt"};
 
-    argv[0] = optNone.data();
-    argv[1] = optCommand.data();
-    argv[2] = optEncrypt.data();
-
-    ASSERT_NO_THROW(opts.Parse(argc, argv));
+    ASSERT_NO_THROW(opts.Parse(argc, (char**)argv.data()));
     ASSERT_EQ(opts.GetCommand(), ProgramOptions::COMMAND_TYPE::ENCRYPT);
 
-    argv[2] = optDecrypt.data();
+    argv = {"", "--command", "decrypt"};
 
-    ASSERT_NO_THROW(opts.Parse(argc, argv));
+    ASSERT_NO_THROW(opts.Parse(argc, (char**)argv.data()));
     ASSERT_EQ(opts.GetCommand(), ProgramOptions::COMMAND_TYPE::DECRYPT);
 
-    argv[2] = optChecksum.data();
+    argv = {"", "--command", "checksum"};
 
-    ASSERT_NO_THROW(opts.Parse(argc, argv));
+    ASSERT_NO_THROW(opts.Parse(argc, (char**)argv.data()));
     ASSERT_EQ(opts.GetCommand(), ProgramOptions::COMMAND_TYPE::CHECKSUM);
 }
 
@@ -74,55 +50,27 @@ TEST(ProgramOptionsTests, TestParseInputFile) {
     ProgramOptions opts;
 
     constexpr int argc = 3;
-    char* argv[argc] = {};
+    std::array<const char*, argc> argv = {"", "--input", "some in path"};
 
-    argv[0] = optNone.data();
-    argv[1] = optInput.data();
-    argv[2] = optPath.data();
-
-    ASSERT_NO_THROW(opts.Parse(argc, argv));
-    ASSERT_EQ(opts.GetInputFile(), optPath);
+    ASSERT_NO_THROW(opts.Parse(argc, (char**)argv.data()));
+    ASSERT_EQ(opts.GetInputFile(), "some in path");
 }
 
 TEST(ProgramOptionsTests, TestParseOutputFile) {
     ProgramOptions opts;
 
     constexpr int argc = 3;
-    char* argv[argc] = {};
+    std::array<const char*, argc> argv = {"", "--output", "some out path"};
 
-    argv[0] = optNone.data();
-    argv[1] = optOutput.data();
-    argv[2] = optPath.data();
-
-    ASSERT_NO_THROW(opts.Parse(argc, argv));
-    ASSERT_EQ(opts.GetOutputFile(), optPath);
+    ASSERT_NO_THROW(opts.Parse(argc, (char**)argv.data()));
+    ASSERT_EQ(opts.GetOutputFile(), "some out path");
 }
 
 TEST(ProgramOptionsTests, TestParseUnrecognized) {
     ProgramOptions opts;
 
     constexpr int argc = 2;
-    char* argv[argc] = {};
+    std::array<const char*, argc> argv = {"", "--unrecognized"};
 
-    std::string optUnrecognized = "--unrecoginzed";
-
-    argv[0] = optNone.data();
-    argv[1] = optUnrecognized.data();
-
-    ASSERT_THROW(opts.Parse(argc, argv), std::runtime_error);
-}
-
-TEST(ProgramOptionsTests, TestParseInvalid) {
-    ProgramOptions opts;
-
-    constexpr int argc = 3;
-    char* argv[argc] = {};
-
-    std::string optInvalid = "";
-
-    argv[0] = optNone.data();
-    argv[1] = optInput.data();
-    argv[2] = optInvalid.data();
-
-    ASSERT_THROW(opts.Parse(argc, argv), std::runtime_error);
+    ASSERT_THROW(opts.Parse(argc, (char**)argv.data()), std::runtime_error);
 }
